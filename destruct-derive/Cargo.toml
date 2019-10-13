@@ -1,0 +1,13 @@
+[package]
+name = "destruct-derive"
+version = "0.1.0"
+authors = ["Jiaming Lu <jiaminglu@live.com>"]
+edition = "2018"
+
+[dependencies]
+syn = "1.0"
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[lib]
+proc-macro = true
