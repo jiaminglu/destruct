@@ -4,49 +4,75 @@ pub trait Destruct: Sized {
     fn construct(d: Self::DestructType) -> Self;
 }
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate destruct_derive;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate err_derive;
+#[macro_use]
+extern crate derive_new;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct DestructEnd;
+use std::marker::PhantomData;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct DestructBegin<T> {
-    pub fields: T,
+pub trait DestructMetadata {
+    fn struct_name() -> &'static str;
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct DestructField<H, T> {
+#[derive(new, Debug, PartialEq, Eq)]
+pub struct DestructBegin<T, M: DestructMetadata + 'static> {
+    pub fields: T,
+    #[new(default)]
+    meta: PhantomData<&'static M>,
+}
+
+pub trait DestructFieldMetadata: DestructMetadata + 'static {
+    fn head_name() -> &'static str;
+}
+
+impl<T, M: DestructMetadata + 'static> DestructBegin<T, M> {
+    pub fn struct_name(&self) -> &'static str {
+        M::struct_name()
+    }
+}
+
+#[derive(new, Debug, PartialEq, Eq)]
+pub struct DestructField<H, T, M: DestructFieldMetadata + 'static> {
     pub head: H,
     pub tail: T,
+    #[new(default)]
+    meta: PhantomData<&'static M>,
+}
+
+impl<H, T, M: DestructFieldMetadata + 'static> DestructField<H, T, M> {
+    pub fn struct_name(&self) -> &'static str {
+        M::struct_name()
+    }
+    pub fn head_name(&self) -> &'static str {
+        M::head_name()
+    }
+}
+
+#[derive(new, Debug, PartialEq, Eq)]
+pub struct DestructEnd<M: DestructMetadata + 'static> {
+    #[new(default)]
+    meta: PhantomData<&'static M>,
+}
+
+impl<M: DestructMetadata + 'static> DestructEnd<M> {
+    pub fn struct_name(&self) -> &'static str {
+        M::struct_name()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate as destruct_lib;
-
-    #[derive(Destruct, Clone, Debug, PartialEq, Eq)]
-    struct Test {
-        i: i8,
-        u: u8,
-    }
-
-    #[test]
-    fn test() {
-        let test = Test { i: 0, u: 1 };
-        let d: DestructBegin<DestructField<i8, DestructField<u8, DestructEnd>>> = DestructBegin{fields: DestructField{head:0, tail:DestructField{head:1, tail:DestructEnd}}};
-        assert_eq!(d, test.clone().destruct());
-        assert_eq!(Test::construct(d), test);
-    }
-
-    use super::*;
     use crate::tests::ParseError::IOError;
-    use destruct_lib::*;
     use std::io::Error;
     use std::io::Read;
+
+    use crate as destruct_lib;
 
     trait Parser: Sized {
         type Error;
@@ -77,32 +103,32 @@ mod tests {
         }
     }
 
-    impl Parser for DestructEnd {
+    impl<M: DestructMetadata> Parser for DestructEnd<M> {
         type Error = ParseError;
 
         fn parse<R: Read>(_: &mut R) -> Result<Self, Self::Error> {
-            Ok(DestructEnd)
+            Ok(DestructEnd::new())
         }
     }
 
-    impl<H: Parser<Error = ParseError>, T: Parser<Error = ParseError>> Parser for DestructField<H, T> {
+    impl<
+            H: Parser<Error = ParseError>,
+            T: Parser<Error = ParseError>,
+            M: DestructFieldMetadata,
+        > Parser for DestructField<H, T, M>
+    {
         type Error = ParseError;
 
         fn parse<R: Read>(r: &mut R) -> Result<Self, Self::Error> {
-            Ok(DestructField {
-                head: H::parse(r)?,
-                tail: T::parse(r)?,
-            })
+            Ok(DestructField::new(H::parse(r)?, T::parse(r)?))
         }
     }
 
-    impl<Fields: Parser<Error = ParseError>> Parser for DestructBegin<Fields> {
+    impl<Fields: Parser<Error = ParseError>, M: DestructMetadata> Parser for DestructBegin<Fields, M> {
         type Error = ParseError;
 
         fn parse<R: Read>(r: &mut R) -> Result<Self, Self::Error> {
-            Ok(DestructBegin {
-                fields: Fields::parse(r)?,
-            })
+            Ok(DestructBegin::new(Fields::parse(r)?))
         }
     }
 
@@ -114,9 +140,36 @@ mod tests {
     }
 
     #[test]
+    fn test_meta() {
+        let a = A {
+            first: b'a',
+            second: b'b',
+            third: b'c',
+        };
+        let d = a.destruct();
+        let name = d.struct_name();
+        assert_eq!(name, "A");
+        let name = d.fields.head_name();
+        assert_eq!(name, "first");
+        let name = d.fields.tail.head_name();
+        assert_eq!(name, "second");
+        let name = d.fields.tail.tail.head_name();
+        assert_eq!(name, "third");
+    }
+
+    #[test]
     fn test_parser() {
         let mut src = b"abc" as &[u8];
-        let a: A = <A as Destruct>::DestructType::parse(&mut src).unwrap().into();
-        assert_eq!(a, A {first: b'a', second: b'b', third: b'c'})
+        let a: A = <A as Destruct>::DestructType::parse(&mut src)
+            .unwrap()
+            .into();
+        assert_eq!(
+            a,
+            A {
+                first: b'a',
+                second: b'b',
+                third: b'c'
+            }
+        )
     }
 }

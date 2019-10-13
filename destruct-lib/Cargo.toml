@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 destruct-derive = { path = "../destruct-derive" }
 err-derive = "0.1"
+derive-new = "0.5"
