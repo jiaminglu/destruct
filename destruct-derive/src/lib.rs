@@ -74,6 +74,7 @@ fn get_destruct_field_meta(
         let field_lit_name = LitStr::new(s.as_str(), field_name.span());
         tokens.extend(quote! {
             #[allow(non_camel_case_types)]
+            #[derive(Debug, PartialEq, Eq)]
             struct #field_meta_name;
 
             impl DestructMetadata for #field_meta_name {
@@ -122,6 +123,7 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
         }
 
         #[allow(non_camel_case_types)]
+        #[derive(Debug, PartialEq, Eq)]
         struct #destruct_meta_name;
 
         impl DestructMetadata for #destruct_meta_name {
