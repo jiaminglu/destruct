@@ -4,10 +4,10 @@ extern crate derive_new;
 extern crate destruct_derive;
 
 use byteorder::ReadBytesExt;
+use destruct_lib::*;
 use failure::{Error, Fail};
 use std::io;
 use std::marker::PhantomData;
-use destruct_lib::*;
 
 pub trait ParserRead: io::Read {
     fn take_while<F>(&mut self, f: F) -> &[u8]
@@ -44,12 +44,11 @@ impl<M: DestructMetadata + 'static> Parsable for DestructEnd<M> {
     }
 }
 
-impl<H: Parsable, T: Parsable, M: DestructFieldMetadata + 'static> Parsable for DestructField<H, T, M> {
+impl<H: Parsable, T: Parsable, M: DestructFieldMetadata + 'static> Parsable
+    for DestructField<H, T, M>
+{
     fn parse<R: ParserRead>(read: &mut R) -> Result<Self, Error> {
-        Ok(DestructField::new(
-            H::parse(read)?,
-            T::parse(read)?,
-        ))
+        Ok(DestructField::new(H::parse(read)?, T::parse(read)?))
     }
 }
 
@@ -103,10 +102,15 @@ macro_rules! define_validator {
 }
 
 define_validator!(IsAsciiDigit, |value: &u8| *value >= b'0' && *value <= b'9');
-define_validator!(IsAsciiLowerCase, |value: &u8| *value >= b'a' && *value <= b'z');
-define_validator!(IsAsciiUpperCase, |value: &u8| *value >= b'A' && *value <= b'Z');
+define_validator!(IsAsciiLowerCase, |value: &u8| *value >= b'a'
+    && *value <= b'z');
+define_validator!(IsAsciiUpperCase, |value: &u8| *value >= b'A'
+    && *value <= b'Z');
 
-pub fn parse_struct<T: Destruct, R: ParserRead>(r: &mut R) -> Result<T, Error> where T::DestructType: Parsable {
+pub fn parse_struct<T: Destruct, R: ParserRead>(r: &mut R) -> Result<T, Error>
+where
+    T::DestructType: Parsable,
+{
     T::DestructType::parse(r).map(T::construct)
 }
 
@@ -138,10 +142,13 @@ mod tests {
     fn test_struct() {
         let ab = b"a2";
         let result: Test = parse_struct(&mut ab.as_ref()).unwrap();
-        assert_eq!(result, Test {
-            a: Validated::new(b'a'),
-            b: Validated::new(b'2'),
-        })
+        assert_eq!(
+            result,
+            Test {
+                a: Validated::new(b'a'),
+                b: Validated::new(b'2'),
+            }
+        )
     }
 
 }

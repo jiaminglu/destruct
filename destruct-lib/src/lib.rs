@@ -1,9 +1,3 @@
-pub trait Destruct: Sized {
-    type DestructType: From<Self> + Into<Self>;
-    fn destruct(self) -> Self::DestructType;
-    fn construct(d: Self::DestructType) -> Self;
-}
-
 #[allow(unused_imports)]
 #[macro_use]
 extern crate destruct_derive;
@@ -15,8 +9,15 @@ extern crate derive_new;
 
 use std::marker::PhantomData;
 
+pub trait Destruct: Sized {
+    type DestructType: From<Self> + Into<Self>;
+    fn destruct(self) -> Self::DestructType;
+    fn construct(d: Self::DestructType) -> Self;
+}
+
 pub trait DestructMetadata {
     fn struct_name() -> &'static str;
+    fn named_fields() -> bool;
 }
 
 #[derive(new, Debug, PartialEq, Eq)]
@@ -62,6 +63,56 @@ pub struct DestructEnd<M: DestructMetadata + 'static> {
 impl<M: DestructMetadata + 'static> DestructEnd<M> {
     pub fn struct_name(&self) -> &'static str {
         M::struct_name()
+    }
+}
+
+pub trait DestructEnumMetadata {
+    fn enum_name() -> &'static str;
+}
+
+#[derive(new, Debug, PartialEq, Eq)]
+pub struct DestructEnumBegin<T, M: DestructEnumMetadata + 'static> {
+    pub variants: T,
+    #[new(default)]
+    meta: PhantomData<&'static M>,
+}
+
+pub trait DestructEnumVariantMetadata: DestructEnumMetadata + 'static {
+    fn variant_name() -> &'static str;
+}
+
+impl<T, M: DestructEnumMetadata + 'static> DestructEnumBegin<T, M> {
+    pub fn enum_name() -> &'static str {
+        M::enum_name()
+    }
+}
+
+#[derive(new, Debug, PartialEq, Eq)]
+pub struct DestructEnumVariant<H, T, M: DestructEnumVariantMetadata + 'static> {
+    pub head: H,
+    pub tail: T,
+    #[new(default)]
+    meta: PhantomData<&'static M>,
+}
+
+impl<H, T, M: DestructEnumVariantMetadata + 'static> DestructEnumVariant<H, T, M> {
+    pub fn enum_name() -> &'static str {
+        M::enum_name()
+    }
+    pub fn variant_name() -> &'static str {
+        M::variant_name()
+    }
+}
+
+#[derive(new, Debug, PartialEq, Eq)]
+pub struct DestructEnumEnd<M: DestructEnumMetadata + 'static> {
+    #[new(default)]
+    meta: PhantomData<&'static M>,
+}
+
+impl<M: DestructEnumMetadata + 'static> DestructEnumEnd<M> {
+    pub fn enum_name() -> &'static str {
+        M::enum_name()
     }
 }
 
@@ -139,6 +190,9 @@ mod tests {
         third: u8,
     }
 
+    #[derive(Destruct, Clone, Debug, PartialEq, Eq)]
+    struct B(u8, u8);
+
     #[test]
     fn test_meta() {
         let a = A {
@@ -158,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser() {
+    fn test_parse_struct() {
         let mut src = b"abc" as &[u8];
         let a: A = <A as Destruct>::DestructType::parse(&mut src)
             .unwrap()
@@ -171,5 +225,14 @@ mod tests {
                 third: b'c'
             }
         )
+    }
+
+    #[test]
+    fn test_parse_unnamed_struct() {
+        let mut src = b"ab" as &[u8];
+        let b: B = <B as Destruct>::DestructType::parse(&mut src)
+            .unwrap()
+            .into();
+        assert_eq!(b, B(b'a', b'b'))
     }
 }
