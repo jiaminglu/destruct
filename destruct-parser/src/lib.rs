@@ -2,11 +2,10 @@
 extern crate derive_new;
 #[allow(unused_imports)]
 #[macro_use]
-extern crate destruct_derive;
+extern crate destruct;
 
 use byteorder::ReadBytesExt;
-use destruct_lib::*;
-use destruct_lib as destruct;
+use destruct::*;
 use failure::{Error, Fail};
 use std::io;
 use std::marker::PhantomData;
@@ -130,7 +129,7 @@ impl<T: Parsable> Parsable for Vec<T> {
             let backup = read.clone();
             match T::parse(read) {
                 Ok(i) => result.push(i),
-                Err(e) => {
+                Err(_) => {
                     *read = backup;
                     return Ok(result);
                 }

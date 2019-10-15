@@ -9,6 +9,8 @@ edition = "2018"
 [dependencies]
 failure = "0.1"
 derive-new = "0.5"
-destruct-lib = { path = "../destruct-lib" }
-destruct-derive = { path = "../destruct-derive" }
+destruct = "0.1"
 byteorder = "1.2"
+
+[patch.crates-io]
+destruct = { path = ".." }

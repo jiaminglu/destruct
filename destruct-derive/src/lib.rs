@@ -16,6 +16,7 @@ enum FieldType {
     Unit,
 }
 
+/// Convert fields of both named and unnamed to a unified Vec.
 fn convert_fields(fields: &Fields) -> (FieldType, Vec<FieldOrdered>) {
     let field_type;
     let fields = match fields {
@@ -45,6 +46,7 @@ fn convert_fields(fields: &Fields) -> (FieldType, Vec<FieldOrdered>) {
     (field_type, fields)
 }
 
+/// Get a token stream describing the type name of the destructed enum type
 fn get_destruct_enum_type(
     name: &Ident,
     variants: &mut punctuated::Iter<Variant>,
@@ -74,6 +76,18 @@ fn get_destruct_enum_type(
         }
     }
 }
+
+/// Get the pattern matching of From for enums.
+/// It will be placed in:
+/// ```rust, norun
+/// impl From<OritinalEnum> for DestructType {
+///     fn from(t: OritinalEnum) -> Self {
+///         destruct::DestructEnumBegin::new(match t {
+///             #result
+///         })
+///     }
+/// }
+/// ```
 fn get_destruct_enum_from(
     name: &Ident,
     variants: &mut punctuated::Iter<Variant>,
@@ -117,6 +131,18 @@ fn get_destruct_enum_from(
         }
     }
 }
+
+/// Get the pattern matching of Into for enums. It will be placed in:
+///
+/// ```rust, norun
+/// impl Into<OritinalEnum> for DestructType {
+///     fn into(self) -> OriginalEnum {
+///         match self.variants {
+///             #result
+///         }
+///     }
+/// }
+/// ```
 fn get_destruct_enum_into(
     name: &Ident,
     variants: &mut punctuated::Iter<Variant>,
@@ -145,6 +171,7 @@ fn get_destruct_enum_into(
     }
 }
 
+/// Get the type name of destructed type.
 fn get_destruct_type(
     name: &Ident,
     fields: &mut std::slice::Iter<FieldOrdered>,
@@ -172,6 +199,15 @@ fn get_destruct_type(
     }
 }
 
+/// Get the field assignments of the from function.
+/// It will be placed in:
+/// ```rust, no_run
+/// impl From<OriginalStruct> for DestructType {
+///     fn from(value: OriginalStruct) -> Self {
+///         #result
+///     }
+/// }
+/// ```
 fn get_destruct_from(fields: &mut std::slice::Iter<FieldOrdered>) -> proc_macro2::TokenStream {
     match fields.next() {
         Some(head_field) => {
@@ -198,6 +234,15 @@ fn get_destruct_from(fields: &mut std::slice::Iter<FieldOrdered>) -> proc_macro2
     }
 }
 
+/// Get the field assignments of the into function.
+/// It will be placed in:
+/// ```rust, no_run
+/// impl Into<OriginalStruct> for DestructType {
+///     fn into(self) -> OriginalStruct {
+///         OriginalStruct #result;
+///     }
+/// }
+/// ```
 fn get_destruct_into_fields(
     self_name: &Ident,
     struct_is_named: bool,
@@ -232,6 +277,8 @@ fn get_destruct_into_fields(
     }
 }
 
+/// Generate metadata type for struct fields. The generated type is a unit struct which implements
+/// `destruct::DestructMetadata` and `destruct::DestructFieldMetadata`
 fn get_destruct_field_meta(
     name: &Ident,
     struct_is_named: bool,
@@ -244,6 +291,7 @@ fn get_destruct_field_meta(
             .ident
             .clone()
             .unwrap_or(format_ident!("unnamed_{}", field.1));
+        let field_index = field.1;
         let field_meta_name = format_ident!("_destruct_{}_field_{}_meta", name, field_name);
         let s = format!("{}", name);
         let lit_name = LitStr::new(s.as_str(), name.span());
@@ -263,8 +311,11 @@ fn get_destruct_field_meta(
                 }
             }
             impl destruct::DestructFieldMetadata for #field_meta_name {
-                fn head_name() -> &'static str {
+                fn field_name() -> &'static str {
                     #field_lit_name
+                }
+                fn field_index() -> usize {
+                    #field_index
                 }
             }
         });
@@ -289,7 +340,7 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
             let mut tt = TokenStream2::new();
             let s = format!("{}", name);
             let lit_name = LitStr::new(s.as_str(), name.span());
-            for variant in e.variants.iter() {
+            for (variant_index, variant) in e.variants.iter().enumerate() {
                 let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
                 let meta_name =
                     format_ident!("_destruct_enum_{}_variant_{}_meta", name, variant.ident);
@@ -332,6 +383,9 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
                     impl destruct::DestructEnumVariantMetadata for #meta_name {
                         fn variant_name() -> &'static str {
                             #lit_vname
+                        }
+                        fn variant_index() -> usize {
+                            #variant_index
                         }
                     }
                 });
@@ -388,6 +442,13 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
     proc_macro::TokenStream::from(result)
 }
 
+/// Generate metadata class and implement Destruct for a struct.
+///
+/// Parameters:
+/// - name: The identifier of the struct. It may be a generated name for enum variants.
+/// - lit_name: The name of the struct. In the case of enum variants, it's "Enum::Variant".
+/// - struct_is_named: Whether the struct definition is named.
+/// - fields: The field of the struct or enum variant.
 fn derive_struct(
     name: Ident,
     lit_name: LitStr,

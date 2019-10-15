@@ -29,7 +29,8 @@ pub struct DestructBegin<T, M: DestructMetadata + 'static> {
 }
 
 pub trait DestructFieldMetadata: DestructMetadata + 'static {
-    fn head_name() -> &'static str;
+    fn field_name() -> &'static str;
+    fn field_index() -> usize;
 }
 
 impl<T, M: DestructMetadata + 'static> DestructBegin<T, M> {
@@ -50,8 +51,11 @@ impl<H, T, M: DestructFieldMetadata + 'static> DestructField<H, T, M> {
     pub fn struct_name(&self) -> &'static str {
         M::struct_name()
     }
-    pub fn head_name(&self) -> &'static str {
-        M::head_name()
+    pub fn field_name(&self) -> &'static str {
+        M::field_name()
+    }
+    pub fn field_index(&self) -> usize {
+        M::field_index()
     }
 }
 
@@ -80,6 +84,7 @@ pub struct DestructEnumBegin<T, M: DestructEnumMetadata + 'static> {
 
 pub trait DestructEnumVariantMetadata: DestructEnumMetadata + 'static {
     fn variant_name() -> &'static str;
+    fn variant_index() -> usize;
 }
 
 impl<T, M: DestructEnumMetadata + 'static> DestructEnumBegin<T, M> {
@@ -100,6 +105,9 @@ impl<H, T, M: DestructEnumVariantMetadata + 'static> DestructEnumVariant<H, T, M
     }
     pub fn variant_name() -> &'static str {
         M::variant_name()
+    }
+    pub fn variant_index() -> usize {
+        M::variant_index()
     }
 }
 
