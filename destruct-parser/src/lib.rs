@@ -10,37 +10,18 @@ use failure::{Error, Fail};
 use std::io;
 use std::marker::PhantomData;
 
-pub trait ParserRead: io::Read {
-    fn take_while<F>(&mut self, f: F) -> &[u8]
-    where
-        F: Fn(u8) -> bool;
-}
-
-impl<'a> ParserRead for &'a [u8] {
-    fn take_while<F>(&mut self, f: F) -> &[u8]
-    where
-        F: Fn(u8) -> bool,
-    {
-        let mut i = 0;
-        while f(self[i]) {
-            i += 1;
-        }
-        &self[..i]
-    }
-}
-
 pub trait Parsable: Sized {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error>;
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error>;
 }
 
 impl Parsable for u8 {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
         read.read_u8().map_err(Into::into)
     }
 }
 
 impl<M: DestructMetadata + 'static> Parsable for DestructEnd<M> {
-    fn parse<R: ParserRead + Clone>(_: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(_: &mut R) -> Result<Self, Error> {
         Ok(DestructEnd::new())
     }
 }
@@ -48,13 +29,13 @@ impl<M: DestructMetadata + 'static> Parsable for DestructEnd<M> {
 impl<H: Parsable, T: Parsable, M: DestructFieldMetadata + 'static> Parsable
     for DestructField<H, T, M>
 {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
         Ok(DestructField::new(H::parse(read)?, T::parse(read)?))
     }
 }
 
 impl<F: Parsable, M: DestructMetadata + 'static> Parsable for DestructBegin<F, M> {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
         Ok(DestructBegin::new(F::parse(read)?))
     }
 }
@@ -64,7 +45,7 @@ impl<F: Parsable, M: DestructMetadata + 'static> Parsable for DestructBegin<F, M
 pub struct EnumParseError(&'static str);
 
 impl<M: DestructEnumMetadata + 'static> Parsable for DestructEnumEnd<M> {
-    fn parse<R: ParserRead + Clone>(_: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(_: &mut R) -> Result<Self, Error> {
         Err(EnumParseError(M::enum_name()).into())
     }
 }
@@ -72,7 +53,7 @@ impl<M: DestructEnumMetadata + 'static> Parsable for DestructEnumEnd<M> {
 impl<H: Parsable, T: Parsable, M: DestructEnumVariantMetadata + 'static> Parsable
     for DestructEnumVariant<H, T, M>
 {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
         let backup = read.clone();
         match H::parse(read) {
             Ok(r) => Ok(DestructEnumVariant::new_head(r)),
@@ -85,7 +66,7 @@ impl<H: Parsable, T: Parsable, M: DestructEnumVariantMetadata + 'static> Parsabl
 }
 
 impl<T: Parsable, M: DestructEnumMetadata + 'static> Parsable for DestructEnumBegin<T, M> {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
         Ok(DestructEnumBegin::new(T::parse(read)?))
     }
 }
@@ -107,7 +88,7 @@ pub struct Validated<T, F: Validator<T> + 'static> {
 pub struct ValidateError(&'static str);
 
 impl<T: Parsable, F: Validator<T>> Parsable for Validated<T, F> {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
         let backup = read.clone();
         let r = T::parse(read)?;
         if F::validate(&r) {
@@ -141,14 +122,30 @@ define_validator!(IsAsciiLowerCase, |value: &u8| *value >= b'a'
 define_validator!(IsAsciiUpperCase, |value: &u8| *value >= b'A'
     && *value <= b'Z');
 
-pub fn parse_struct<T: Destruct, R: ParserRead + Clone>(r: &mut R) -> Result<T, Error>
+impl<T: Parsable> Parsable for Vec<T> {
+    fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
+        let mut result = Vec::new();
+        loop {
+            let backup = read.clone();
+            match T::parse(read) {
+                Ok(i) => result.push(i),
+                Err(e) => {
+                    *read = backup;
+                    return Ok(result);
+                }
+            }
+        }
+    }
+}
+
+pub fn parse_struct<T: Destruct, R: io::Read + Clone>(r: &mut R) -> Result<T, Error>
 where
     T::DestructType: Parsable,
 {
     T::DestructType::parse(r).map(T::construct)
 }
 
-pub fn parse<T: Parsable, R: ParserRead + Clone>(r: &mut R) -> Result<T, Error> {
+pub fn parse<T: Parsable, R: io::Read + Clone>(r: &mut R) -> Result<T, Error> {
     T::parse(r)
 }
 
@@ -217,4 +214,32 @@ mod tests {
         );
     }
 
+    #[derive(new, Debug, Destruct, PartialEq, Eq)]
+    struct Identifier {
+        head: Validated<u8, IsAsciiLowerCase>,
+        tail: Vec<Validated<u8, IsAsciiDigit>>,
+    }
+
+    #[test]
+    fn test_identifier() {
+        let s1 = b"a1";
+        let s2 = b"a12";
+        let s3 = b"1a";
+
+        let result: Identifier = parse_struct(&mut s1.as_ref()).unwrap();
+        assert_eq!(
+            result,
+            Identifier::new(Validated::new(b'a'), vec!(Validated::new(b'1')))
+        );
+        let result: Identifier = parse_struct(&mut s2.as_ref()).unwrap();
+        assert_eq!(
+            result,
+            Identifier::new(
+                Validated::new(b'a'),
+                vec!(Validated::new(b'1'), Validated::new(b'2'))
+            )
+        );
+        let result: Result<Identifier, Error> = parse_struct(&mut s3.as_ref());
+        assert!(result.is_err())
+    }
 }
