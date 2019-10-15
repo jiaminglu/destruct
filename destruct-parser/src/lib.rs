@@ -6,6 +6,7 @@ extern crate destruct_derive;
 
 use byteorder::ReadBytesExt;
 use destruct_lib::*;
+use destruct_lib as destruct;
 use failure::{Error, Fail};
 use std::io;
 use std::marker::PhantomData;

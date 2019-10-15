@@ -237,28 +237,4 @@ mod tests {
         assert_eq!(b, B(b'a', b'b'))
     }
 
-    fn test_enum() {
-        enum Test {
-            VariantA(u8),
-        }
-
-        struct _destruct_enum_variant_VariantA(u8);
-
-        impl Into<Test>
-            for DestructEnumBegin<
-                DestructEnumVariant<_destruct_enum_variant_VariantA, DestructEnumEnd<_>, _>,
-                _,
-            >
-        {
-            fn into(self) -> Test {
-                match self.variants.either {
-                    Either::Left(a) => unimplemented!(),
-                    Either::Right(tail) => match tail {
-                        Either::Left(a) => unimplemented!(),
-                        Either::Right(tail) => match tail {},
-                    },
-                }
-            }
-        }
-    }
 }
