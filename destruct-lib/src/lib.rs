@@ -122,7 +122,7 @@ mod tests {
     use std::io::Error;
     use std::io::Read;
 
-    use crate as destruct_lib;
+    use crate as destruct;
 
     trait Parser: Sized {
         type Error;
