@@ -88,11 +88,9 @@ impl<T, M: DestructEnumMetadata + 'static> DestructEnumBegin<T, M> {
 }
 
 #[derive(new, Debug, PartialEq, Eq)]
-pub struct DestructEnumVariant<H, T, M: DestructEnumVariantMetadata + 'static> {
-    pub head: H,
-    pub tail: T,
-    #[new(default)]
-    meta: PhantomData<&'static M>,
+pub enum DestructEnumVariant<H, T, M: DestructEnumVariantMetadata + 'static> {
+    Head(H, #[new(default)] PhantomData<&'static M>),
+    Tail(T, #[new(default)] PhantomData<&'static M>),
 }
 
 impl<H, T, M: DestructEnumVariantMetadata + 'static> DestructEnumVariant<H, T, M> {
@@ -142,6 +140,8 @@ mod tests {
             IOError(e)
         }
     }
+
+    struct  AA();
 
     /// Test for simple bincode
     impl Parser for u8 {
@@ -234,5 +234,30 @@ mod tests {
             .unwrap()
             .into();
         assert_eq!(b, B(b'a', b'b'))
+    }
+
+    fn test_enum() {
+        enum Test {
+            VariantA(u8),
+        }
+
+        struct _destruct_enum_variant_VariantA(u8);
+
+        impl Into<Test>
+            for DestructEnumBegin<
+                DestructEnumVariant<_destruct_enum_variant_VariantA, DestructEnumEnd<_>, _>,
+                _,
+            >
+        {
+            fn into(self) -> Test {
+                match self.variants.either {
+                    Either::Left(a) => unimplemented!(),
+                    Either::Right(tail) => match tail {
+                        Either::Left(a) => unimplemented!(),
+                        Either::Right(tail) => match tail {},
+                    },
+                }
+            }
+        }
     }
 }

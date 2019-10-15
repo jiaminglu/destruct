@@ -29,17 +29,17 @@ impl<'a> ParserRead for &'a [u8] {
 }
 
 pub trait Parsable: Sized {
-    fn parse<R: ParserRead>(read: &mut R) -> Result<Self, Error>;
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error>;
 }
 
 impl Parsable for u8 {
-    fn parse<R: ParserRead>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
         read.read_u8().map_err(Into::into)
     }
 }
 
 impl<M: DestructMetadata + 'static> Parsable for DestructEnd<M> {
-    fn parse<R: ParserRead>(_: &mut R) -> Result<Self, Error> {
+    fn parse<R: ParserRead + Clone>(_: &mut R) -> Result<Self, Error> {
         Ok(DestructEnd::new())
     }
 }
@@ -47,14 +47,42 @@ impl<M: DestructMetadata + 'static> Parsable for DestructEnd<M> {
 impl<H: Parsable, T: Parsable, M: DestructFieldMetadata + 'static> Parsable
     for DestructField<H, T, M>
 {
-    fn parse<R: ParserRead>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
         Ok(DestructField::new(H::parse(read)?, T::parse(read)?))
     }
 }
 
 impl<F: Parsable, M: DestructMetadata + 'static> Parsable for DestructBegin<F, M> {
-    fn parse<R: ParserRead>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
         Ok(DestructBegin::new(F::parse(read)?))
+    }
+}
+
+#[derive(Debug, Fail)]
+#[fail(display = "Can not parse enum {}", 0)]
+pub struct EnumParseError(&'static str);
+
+impl<M: DestructEnumMetadata + 'static> Parsable for DestructEnumEnd<M> {
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+        Err(EnumParseError(M::enum_name()).into())
+    }
+}
+
+impl<H: Parsable, T: Parsable, M: DestructEnumVariantMetadata + 'static> Parsable
+    for DestructEnumVariant<H, T, M>
+{
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+        let mut backup = read.clone();
+        match H::parse(read) {
+            Ok(r) => Ok(DestructEnumVariant::new_head(r)),
+            Err(e) => Ok(DestructEnumVariant::new_tail(T::parse(&mut backup)?)),
+        }
+    }
+}
+
+impl<T: Parsable, M: DestructEnumMetadata + 'static> Parsable for DestructEnumBegin<T, M> {
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+        Ok(DestructEnumBegin::new(T::parse(read)?))
     }
 }
 
@@ -75,7 +103,7 @@ pub struct Validated<T, F: Validator<T> + 'static> {
 pub struct ValidateError(&'static str);
 
 impl<T: Parsable, F: Validator<T>> Parsable for Validated<T, F> {
-    fn parse<R: ParserRead>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
         let r = T::parse(read)?;
         if F::validate(&r) {
             Ok(Validated::new(r))
@@ -107,14 +135,14 @@ define_validator!(IsAsciiLowerCase, |value: &u8| *value >= b'a'
 define_validator!(IsAsciiUpperCase, |value: &u8| *value >= b'A'
     && *value <= b'Z');
 
-pub fn parse_struct<T: Destruct, R: ParserRead>(r: &mut R) -> Result<T, Error>
+pub fn parse_struct<T: Destruct, R: ParserRead + Clone>(r: &mut R) -> Result<T, Error>
 where
     T::DestructType: Parsable,
 {
     T::DestructType::parse(r).map(T::construct)
 }
 
-pub fn parse<T: Parsable, R: ParserRead>(r: &mut R) -> Result<T, Error> {
+pub fn parse<T: Parsable, R: ParserRead + Clone>(r: &mut R) -> Result<T, Error> {
     T::parse(r)
 }
 
@@ -149,6 +177,36 @@ mod tests {
                 b: Validated::new(b'2'),
             }
         )
+    }
+
+    #[derive(Debug, Destruct, PartialEq, Eq)]
+    enum TestEnum {
+        CaseA(Validated<u8, IsAsciiLowerCase>, Validated<u8, IsAsciiDigit>),
+        CaseB {
+            a: Validated<u8, IsAsciiDigit>,
+            b: Validated<u8, IsAsciiLowerCase>,
+        },
+    }
+
+    #[test]
+    fn test_parse_enum() {
+        let s1 = b"a1";
+        let s2 = b"aa";
+        let s3 = b"1a";
+
+        let result: TestEnum = parse_struct(&mut s1.as_ref()).unwrap();
+        assert_eq!(
+            result,
+            TestEnum::CaseA(Validated::new(b'a'), Validated::new(b'1'))
+        );
+        let result: Result<TestEnum, Error> = parse_struct(&mut s2.as_ref());
+        assert!(result.is_err());
+        let result: TestEnum = parse_struct(&mut s3.as_ref()).unwrap();
+        assert_eq!(
+            result,
+            TestEnum::CaseB{a:Validated::new(b'1'), b:Validated::new(b'a')}
+        );
+
     }
 
 }

@@ -5,10 +5,134 @@ extern crate quote;
 use proc_macro::TokenStream;
 use syn::export::TokenStream2;
 use syn::punctuated;
-use syn::punctuated::Punctuated;
-use syn::{parse2, Data, DeriveInput, Field, Fields, Ident, LitStr};
+use syn::{parse2, Data, DeriveInput, Field, Fields, Ident, LitStr, Variant};
 
 struct FieldOrdered(Field, usize);
+
+#[derive(PartialEq, Eq)]
+enum FieldType {
+    Named, Unnamed, Unit,
+}
+
+fn convert_fields(fields: &Fields) -> (FieldType, Vec<FieldOrdered>) {
+    let field_type;
+    let fields = match fields {
+        Fields::Named(named) => {
+            field_type = FieldType::Named;
+            named
+                .named
+                .iter()
+                .enumerate()
+                .map(|(i, f)| FieldOrdered(f.clone(), i))
+                .collect()
+        }
+        Fields::Unnamed(unnamed) => {
+            field_type = FieldType::Unnamed;
+            unnamed
+                .unnamed
+                .iter()
+                .enumerate()
+                .map(|(i, f)| FieldOrdered(f.clone(), i))
+                .collect()
+        }
+        Fields::Unit => {
+            field_type = FieldType::Unit;
+            Vec::new()
+        }
+    };
+    (field_type, fields)
+}
+
+fn get_destruct_enum_type(
+    name: &Ident,
+    variants: &mut punctuated::Iter<Variant>,
+) -> proc_macro2::TokenStream {
+    match variants.next() {
+        Some(variant) => {
+            let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
+            let metadata_name =
+                format_ident!("_destruct_enum_{}_variant_{}_meta", name, variant.ident);
+            let field_struct_metadata_name =
+                format_ident!("_destruct__destruct_enum_{}_variant_{}_meta", name, variant.ident);
+            let tail = get_destruct_enum_type(name, variants);
+            let (_, fields) = convert_fields(&variant.fields);
+            let destruct_type = get_destruct_type(&vname, &mut fields.iter());
+            quote! {
+                destruct_lib::DestructEnumVariant<destruct_lib::DestructBegin<#destruct_type, #field_struct_metadata_name>, #tail, #metadata_name>
+            }
+        }
+        None => {
+            let metadata_name = format_ident!("_destruct_enum_{}_meta", name);
+            quote! {
+                destruct_lib::DestructEnumEnd<#metadata_name>
+            }
+        }
+    }
+}
+fn get_destruct_enum_from(
+    name: &Ident,
+    variants: &mut punctuated::Iter<Variant>,
+) -> proc_macro2::TokenStream {
+    match variants.next() {
+        Some(variant) => {
+            let ident = variant.ident.clone();
+            let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
+            let (field_type, fields) = convert_fields(&variant.fields);
+            let idents: Vec<Ident> = fields.iter().map(|f| f.0.ident.clone().unwrap_or(format_ident!("field{}", f.1)) ).collect();
+            let variant_case = match field_type {
+                FieldType::Named => {
+                    quote! {
+                        #name::#ident { #(#idents,)* } => destruct_lib::DestructEnumVariant::new_head((#vname { #(#idents,)* }).destruct())
+                    }
+                }
+                FieldType::Unnamed => {
+                    quote! {
+                        #name::#ident ( #(#idents,)* ) => destruct_lib::DestructEnumVariant::new_head(#vname ( #(#idents,)* ).destruct())
+                    }
+                }
+                FieldType::Unit => {
+                    quote! {
+                        #name::#ident => destruct_lib::DestructEnumVariant::new_head(#vname.destruct());
+                    }
+                }
+            };
+            let tail = get_destruct_enum_from(name, variants);
+            quote! {
+                #variant_case,
+                other_case => destruct_lib::DestructEnumVariant::new_tail(match other_case { #tail })
+            }
+        }
+        None => {
+            quote! {
+                _ => destruct_lib::DestructEnumEnd::new()
+            }
+        }
+    }
+}
+fn get_destruct_enum_into(
+    name: &Ident,
+    variants: &mut punctuated::Iter<Variant>,
+) -> proc_macro2::TokenStream {
+    match variants.next() {
+        Some(variant) => {
+            let ident = variant.ident.clone();
+            let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
+            let (field_type, fields) = convert_fields(&variant.fields);
+            let value_name = format_ident!("variant");
+            let case = get_destruct_into_fields(&vname, &value_name, field_type == FieldType::Named, &mut fields.iter());
+            let tail = get_destruct_enum_into(name, variants);
+            quote! {
+                destruct_lib::DestructEnumVariant::Head(variant, _) => #name::#ident #case,
+                DestructEnumVariant::Tail(tail, _) => match tail { #tail }
+            }
+        }
+        None => {
+            quote! {
+                _ => panic!("impossible")
+            }
+        }
+    }
+}
 
 fn get_destruct_type(
     name: &Ident,
@@ -63,8 +187,9 @@ fn get_destruct_from(fields: &mut std::slice::Iter<FieldOrdered>) -> proc_macro2
     }
 }
 
-fn get_destruct_into(
+fn get_destruct_into_fields(
     name: &Ident,
+    self_name: &Ident,
     struct_is_named: bool,
     fields: &mut std::slice::Iter<FieldOrdered>,
 ) -> proc_macro2::TokenStream {
@@ -74,13 +199,13 @@ fn get_destruct_into(
         match field.0.ident.clone() {
             Some(name) => {
                 tokens.extend(quote! {
-                    #name: self.fields #acc head,
+                    #name: #self_name.fields #acc head,
                 });
                 acc = quote! { #acc tail . }
             }
             None => {
                 tokens.extend(quote! {
-                    self.fields #acc head,
+                    #self_name.fields #acc head,
                 });
                 acc = quote! { #acc tail . }
             }
@@ -88,11 +213,11 @@ fn get_destruct_into(
     }
     if struct_is_named {
         quote! {
-            #name { #tokens }
+            { #tokens }
         }
     } else {
         quote! {
-            #name ( #tokens )
+            ( #tokens )
         }
     }
 }
@@ -145,42 +270,116 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
 
     let result = match input.data {
         Data::Struct(s) => {
-            let struct_is_named;
-            let fields = match s.fields {
-                Fields::Named(named) => {
-                    struct_is_named = true;
-                    named
-                        .named
-                        .iter()
-                        .enumerate()
-                        .map(|(i, f)| FieldOrdered(f.clone(), i))
-                        .collect()
+            let (field_type, fields) = convert_fields(&s.fields);
+            derive_struct(name, field_type == FieldType::Named, fields)
+        }
+        Data::Enum(e) => {
+            let mut tt = TokenStream2::new();
+            let s = format!("{}", name);
+            let lit_name = LitStr::new(s.as_str(), name.span());
+            for variant in e.variants.iter() {
+                let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
+                let meta_name =
+                    format_ident!("_destruct_enum_{}_variant_{}_meta", name, variant.ident);
+                let vfields = variant.fields.clone();
+                let (field_type, fields) = convert_fields(&variant.fields);
+                let struct_is_named = field_type == FieldType::Named;
+                if struct_is_named {
+                    tt.extend(quote! {
+                        #[allow(non_camel_case_types)]
+                        #[derive(Debug, PartialEq, Eq)]
+                        struct #vname #vfields
+                    });
+                } else {
+                    tt.extend(quote! {
+                        #[allow(non_camel_case_types)]
+                        #[derive(Debug, PartialEq, Eq)]
+                        struct #vname #vfields;
+                    });
                 }
-                Fields::Unnamed(unnamed) => {
-                    struct_is_named = false;
-                    unnamed
-                        .unnamed
-                        .iter()
-                        .enumerate()
-                        .map(|(i, f)| FieldOrdered(f.clone(), i))
-                        .collect()
+                let s = format!("{}", name);
+                let lit_name = LitStr::new(s.as_str(), name.span());
+                let s = format!("{}", vname);
+                let lit_vname = LitStr::new(s.as_str(), name.span());
+                tt.extend(quote! {
+                    #[allow(non_camel_case_types)]
+                    struct #meta_name;
+                    impl destruct_lib::DestructMetadata for #meta_name {
+                        fn struct_name() -> &'static str {
+                            #lit_vname
+                        }
+                        fn named_fields() -> bool {
+                            #struct_is_named
+                        }
+                    }
+                    impl destruct_lib::DestructEnumMetadata for #meta_name {
+                        fn enum_name() -> &'static str {
+                            #lit_name
+                        }
+                    }
+                    impl destruct_lib::DestructEnumVariantMetadata for #meta_name {
+                        fn variant_name() -> &'static str {
+                            #lit_vname
+                        }
+                    }
+                });
+                tt.extend(derive_struct(vname, struct_is_named, fields));
+            }
+            let destruct_enum_meta_name = format_ident!("_destruct_enum_{}_meta", name);
+            let destruct_enum_type = get_destruct_enum_type(&name, &mut e.variants.iter());
+            let destruct_enum_from = get_destruct_enum_from(&name, &mut e.variants.iter());
+            let destruct_enum_into = get_destruct_enum_into(&name, &mut e.variants.iter());
+            quote! {
+                #tt
+
+                impl From<#name> for destruct_lib::DestructEnumBegin<#destruct_enum_type, #destruct_enum_meta_name> {
+                    fn from(t: #name) -> Self {
+                        destruct_lib::DestructEnumBegin::new(match t {#destruct_enum_from})
+                    }
                 }
-                Fields::Unit => {
-                    struct_is_named = false;
-                    Vec::new()
+
+                #[allow(non_camel_case_types)]
+                #[derive(Debug, PartialEq, Eq)]
+                struct #destruct_enum_meta_name;
+
+                impl destruct_lib::DestructEnumMetadata for #destruct_enum_meta_name {
+                    fn enum_name() -> &'static str {
+                        #lit_name
+                    }
                 }
-            };
-            derive_struct(name, struct_is_named, fields)
-        },
+
+                impl Into<#name> for destruct_lib::DestructEnumBegin<#destruct_enum_type, #destruct_enum_meta_name> {
+                    fn into(self) -> #name {
+                        match self.variants {
+                            #destruct_enum_into
+                        }
+                    }
+                }
+
+                impl destruct_lib::Destruct for #name {
+                    type DestructType = destruct_lib::DestructEnumBegin<#destruct_enum_type, #destruct_enum_meta_name>;
+
+                    fn destruct(self) -> Self::DestructType {
+                        self.into()
+                    }
+
+                    fn construct(d: Self::DestructType) -> Self {
+                        d.into()
+                    }
+                }
+            }
+        }
         _ => panic!("derive Destruct supports only structs"),
     };
+    eprintln!("{}", result);
     proc_macro::TokenStream::from(result)
 }
 
 fn derive_struct(name: Ident, struct_is_named: bool, fields: Vec<FieldOrdered>) -> TokenStream2 {
     let destruct_type = get_destruct_type(&name, &mut fields.iter());
     let destruct_from = get_destruct_from(&mut fields.iter());
-    let destruct_into = get_destruct_into(&name, struct_is_named, &mut fields.iter());
+    let self_name = format_ident!("self");
+    let destruct_into = get_destruct_into_fields(&name, &self_name, struct_is_named, &mut fields.iter());
     let destruct_field_meta = get_destruct_field_meta(&name, struct_is_named, &mut fields.iter());
 
     let destruct_meta_name = format_ident!("_destruct_{}_meta", name);
@@ -189,9 +388,9 @@ fn derive_struct(name: Ident, struct_is_named: bool, fields: Vec<FieldOrdered>) 
 
     // Return the generated impl
     let output = quote! {
-        impl From<#name> for DestructBegin<#destruct_type, #destruct_meta_name> {
+        impl From<#name> for destruct_lib::DestructBegin<#destruct_type, #destruct_meta_name> {
             fn from(t: #name) -> Self {
-                DestructBegin::new(#destruct_from)
+                destruct_lib::DestructBegin::new(#destruct_from)
             }
         }
 
@@ -199,7 +398,7 @@ fn derive_struct(name: Ident, struct_is_named: bool, fields: Vec<FieldOrdered>) 
         #[derive(Debug, PartialEq, Eq)]
         struct #destruct_meta_name;
 
-        impl DestructMetadata for #destruct_meta_name {
+        impl destruct_lib::DestructMetadata for #destruct_meta_name {
             fn struct_name() -> &'static str {
                 #lit_name
             }
@@ -210,14 +409,14 @@ fn derive_struct(name: Ident, struct_is_named: bool, fields: Vec<FieldOrdered>) 
 
         #destruct_field_meta
 
-        impl Into<#name> for DestructBegin<#destruct_type, #destruct_meta_name> {
+        impl Into<#name> for destruct_lib::DestructBegin<#destruct_type, #destruct_meta_name> {
             fn into(self) -> #name {
-                #destruct_into
+                #name #destruct_into
             }
         }
 
-        impl Destruct for #name {
-            type DestructType = DestructBegin<#destruct_type, #destruct_meta_name>;
+        impl destruct_lib::Destruct for #name {
+            type DestructType = destruct_lib::DestructBegin<#destruct_type, #destruct_meta_name>;
 
             fn destruct(self) -> Self::DestructType {
                 self.into()
