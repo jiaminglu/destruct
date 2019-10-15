@@ -72,10 +72,13 @@ impl<H: Parsable, T: Parsable, M: DestructEnumVariantMetadata + 'static> Parsabl
     for DestructEnumVariant<H, T, M>
 {
     fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
-        let mut backup = read.clone();
+        let backup = read.clone();
         match H::parse(read) {
             Ok(r) => Ok(DestructEnumVariant::new_head(r)),
-            Err(e) => Ok(DestructEnumVariant::new_tail(T::parse(&mut backup)?)),
+            Err(e) => {
+                *read = backup;
+                Ok(DestructEnumVariant::new_tail(T::parse(read)?))
+            },
         }
     }
 }
@@ -104,10 +107,12 @@ pub struct ValidateError(&'static str);
 
 impl<T: Parsable, F: Validator<T>> Parsable for Validated<T, F> {
     fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+        let backup = read.clone();
         let r = T::parse(read)?;
         if F::validate(&r) {
             Ok(Validated::new(r))
         } else {
+            *read = backup;
             Err(ValidateError(F::description()).into())
         }
     }
