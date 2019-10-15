@@ -116,10 +116,9 @@ fn get_destruct_enum_into(
     match variants.next() {
         Some(variant) => {
             let ident = variant.ident.clone();
-            let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
             let (field_type, fields) = convert_fields(&variant.fields);
             let value_name = format_ident!("variant");
-            let case = get_destruct_into_fields(&vname, &value_name, field_type == FieldType::Named, &mut fields.iter());
+            let case = get_destruct_into_fields(&value_name, field_type == FieldType::Named, &mut fields.iter());
             let tail = get_destruct_enum_into(name, variants);
             quote! {
                 destruct_lib::DestructEnumVariant::Head(variant, _) => #name::#ident #case,
@@ -172,7 +171,7 @@ fn get_destruct_from(fields: &mut std::slice::Iter<FieldOrdered>) -> proc_macro2
                     }
                 }
                 None => {
-                    let i = head_field.1;
+                    let i = proc_macro2::Literal::usize_unsuffixed(head_field.1);
                     quote! {
                         destruct_lib::DestructField::new(t.#i, #tail)
                     }
@@ -188,7 +187,6 @@ fn get_destruct_from(fields: &mut std::slice::Iter<FieldOrdered>) -> proc_macro2
 }
 
 fn get_destruct_into_fields(
-    name: &Ident,
     self_name: &Ident,
     struct_is_named: bool,
     fields: &mut std::slice::Iter<FieldOrdered>,
@@ -371,7 +369,6 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
         }
         _ => panic!("derive Destruct supports only structs"),
     };
-    eprintln!("{}", result);
     proc_macro::TokenStream::from(result)
 }
 
@@ -379,7 +376,7 @@ fn derive_struct(name: Ident, struct_is_named: bool, fields: Vec<FieldOrdered>) 
     let destruct_type = get_destruct_type(&name, &mut fields.iter());
     let destruct_from = get_destruct_from(&mut fields.iter());
     let self_name = format_ident!("self");
-    let destruct_into = get_destruct_into_fields(&name, &self_name, struct_is_named, &mut fields.iter());
+    let destruct_into = get_destruct_into_fields(&self_name, struct_is_named, &mut fields.iter());
     let destruct_field_meta = get_destruct_field_meta(&name, struct_is_named, &mut fields.iter());
 
     let destruct_meta_name = format_ident!("_destruct_{}_meta", name);

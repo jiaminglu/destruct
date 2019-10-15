@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate derive_new;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate destruct_derive;
 
@@ -63,7 +64,7 @@ impl<F: Parsable, M: DestructMetadata + 'static> Parsable for DestructBegin<F, M
 pub struct EnumParseError(&'static str);
 
 impl<M: DestructEnumMetadata + 'static> Parsable for DestructEnumEnd<M> {
-    fn parse<R: ParserRead + Clone>(read: &mut R) -> Result<Self, Error> {
+    fn parse<R: ParserRead + Clone>(_: &mut R) -> Result<Self, Error> {
         Err(EnumParseError(M::enum_name()).into())
     }
 }
@@ -75,7 +76,7 @@ impl<H: Parsable, T: Parsable, M: DestructEnumVariantMetadata + 'static> Parsabl
         let backup = read.clone();
         match H::parse(read) {
             Ok(r) => Ok(DestructEnumVariant::new_head(r)),
-            Err(e) => {
+            Err(_) => {
                 *read = backup;
                 Ok(DestructEnumVariant::new_tail(T::parse(read)?))
             },
