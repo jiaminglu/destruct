@@ -3,10 +3,16 @@ name = "destruct-lib"
 version = "0.1.0"
 authors = ["Jiaming Lu <jiaminglu@live.com>"]
 edition = "2018"
+license = "MIT"
+description = "Destruct structs and enums for simpler combinator implementation"
+homepage = "https://github.com/jiaminglu/destruct"
+repository = "https://github.com/jiaminglu/destruct"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-destruct-derive = { path = "../destruct-derive" }
-err-derive = "0.1"
+destruct-derive = { version = "0.1", path = "../destruct-derive" }
 derive-new = "0.5"
+
+[dev-dependencies]
+err-derive = "0.1"

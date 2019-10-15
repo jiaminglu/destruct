@@ -2,6 +2,7 @@
 #[macro_use]
 extern crate destruct_derive;
 #[allow(unused_imports)]
+#[cfg(test)]
 #[macro_use]
 extern crate err_derive;
 #[macro_use]
@@ -141,7 +142,7 @@ mod tests {
         }
     }
 
-    struct  AA();
+    struct AA();
 
     /// Test for simple bincode
     impl Parser for u8 {

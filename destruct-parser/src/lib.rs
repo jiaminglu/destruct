@@ -79,7 +79,7 @@ impl<H: Parsable, T: Parsable, M: DestructEnumVariantMetadata + 'static> Parsabl
             Err(_) => {
                 *read = backup;
                 Ok(DestructEnumVariant::new_tail(T::parse(read)?))
-            },
+            }
         }
     }
 }
@@ -210,9 +210,11 @@ mod tests {
         let result: TestEnum = parse_struct(&mut s3.as_ref()).unwrap();
         assert_eq!(
             result,
-            TestEnum::CaseB{a:Validated::new(b'1'), b:Validated::new(b'a')}
+            TestEnum::CaseB {
+                a: Validated::new(b'1'),
+                b: Validated::new(b'a')
+            }
         );
-
     }
 
 }

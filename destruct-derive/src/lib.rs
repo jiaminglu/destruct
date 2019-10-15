@@ -11,7 +11,9 @@ struct FieldOrdered(Field, usize);
 
 #[derive(PartialEq, Eq)]
 enum FieldType {
-    Named, Unnamed, Unit,
+    Named,
+    Unnamed,
+    Unit,
 }
 
 fn convert_fields(fields: &Fields) -> (FieldType, Vec<FieldOrdered>) {
@@ -52,8 +54,11 @@ fn get_destruct_enum_type(
             let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
             let metadata_name =
                 format_ident!("_destruct_enum_{}_variant_{}_meta", name, variant.ident);
-            let field_struct_metadata_name =
-                format_ident!("_destruct__destruct_enum_{}_variant_{}_meta", name, variant.ident);
+            let field_struct_metadata_name = format_ident!(
+                "_destruct__destruct_enum_{}_variant_{}_meta",
+                name,
+                variant.ident
+            );
             let tail = get_destruct_enum_type(name, variants);
             let (_, fields) = convert_fields(&variant.fields);
             let destruct_type = get_destruct_type(&vname, &mut fields.iter());
@@ -78,7 +83,10 @@ fn get_destruct_enum_from(
             let ident = variant.ident.clone();
             let vname = format_ident!("_destruct_enum_{}_variant_{}", name, variant.ident);
             let (field_type, fields) = convert_fields(&variant.fields);
-            let idents: Vec<Ident> = fields.iter().map(|f| f.0.ident.clone().unwrap_or(format_ident!("field{}", f.1)) ).collect();
+            let idents: Vec<Ident> = fields
+                .iter()
+                .map(|f| f.0.ident.clone().unwrap_or(format_ident!("field{}", f.1)))
+                .collect();
             let variant_case = match field_type {
                 FieldType::Named => {
                     quote! {
@@ -118,7 +126,11 @@ fn get_destruct_enum_into(
             let ident = variant.ident.clone();
             let (field_type, fields) = convert_fields(&variant.fields);
             let value_name = format_ident!("variant");
-            let case = get_destruct_into_fields(&value_name, field_type == FieldType::Named, &mut fields.iter());
+            let case = get_destruct_into_fields(
+                &value_name,
+                field_type == FieldType::Named,
+                &mut fields.iter(),
+            );
             let tail = get_destruct_enum_into(name, variants);
             quote! {
                 destruct_lib::DestructEnumVariant::Head(variant, _) => #name::#ident #case,
@@ -376,7 +388,12 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
     proc_macro::TokenStream::from(result)
 }
 
-fn derive_struct(name: Ident, lit_name: LitStr, struct_is_named: bool, fields: Vec<FieldOrdered>) -> TokenStream2 {
+fn derive_struct(
+    name: Ident,
+    lit_name: LitStr,
+    struct_is_named: bool,
+    fields: Vec<FieldOrdered>,
+) -> TokenStream2 {
     let destruct_type = get_destruct_type(&name, &mut fields.iter());
     let destruct_from = get_destruct_from(&mut fields.iter());
     let self_name = format_ident!("self");

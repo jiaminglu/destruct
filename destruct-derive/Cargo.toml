@@ -3,6 +3,10 @@ name = "destruct-derive"
 version = "0.1.0"
 authors = ["Jiaming Lu <jiaminglu@live.com>"]
 edition = "2018"
+license = "MIT"
+description = "Destruct structs and enums for simpler combinator implementation"
+homepage = "https://github.com/jiaminglu/destruct"
+repository = "https://github.com/jiaminglu/destruct"
 
 [dependencies]
 syn = "1.0"
