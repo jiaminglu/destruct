@@ -269,7 +269,9 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
     let result = match input.data {
         Data::Struct(s) => {
             let (field_type, fields) = convert_fields(&s.fields);
-            derive_struct(name, field_type == FieldType::Named, fields)
+            let s = format!("{}", name);
+            let lit_name = LitStr::new(s.as_str(), name.span());
+            derive_struct(name, lit_name, field_type == FieldType::Named, fields)
         }
         Data::Enum(e) => {
             let mut tt = TokenStream2::new();
@@ -321,7 +323,9 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
                         }
                     }
                 });
-                tt.extend(derive_struct(vname, struct_is_named, fields));
+                let s = format!("{}::{}", name, vname);
+                let lit_name = LitStr::new(s.as_str(), name.span());
+                tt.extend(derive_struct(vname, lit_name, struct_is_named, fields));
             }
             let destruct_enum_meta_name = format_ident!("_destruct_enum_{}_meta", name);
             let destruct_enum_type = get_destruct_enum_type(&name, &mut e.variants.iter());
@@ -372,7 +376,7 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
     proc_macro::TokenStream::from(result)
 }
 
-fn derive_struct(name: Ident, struct_is_named: bool, fields: Vec<FieldOrdered>) -> TokenStream2 {
+fn derive_struct(name: Ident, lit_name: LitStr, struct_is_named: bool, fields: Vec<FieldOrdered>) -> TokenStream2 {
     let destruct_type = get_destruct_type(&name, &mut fields.iter());
     let destruct_from = get_destruct_from(&mut fields.iter());
     let self_name = format_ident!("self");
@@ -380,8 +384,6 @@ fn derive_struct(name: Ident, struct_is_named: bool, fields: Vec<FieldOrdered>) 
     let destruct_field_meta = get_destruct_field_meta(&name, struct_is_named, &mut fields.iter());
 
     let destruct_meta_name = format_ident!("_destruct_{}_meta", name);
-    let s = format!("{}", name);
-    let lit_name = LitStr::new(s.as_str(), name.span());
 
     // Return the generated impl
     let output = quote! {
