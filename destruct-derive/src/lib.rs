@@ -4,8 +4,12 @@ extern crate quote;
 
 use proc_macro::TokenStream;
 use syn::export::TokenStream2;
-use syn::punctuated;
-use syn::{parse2, Data, DeriveInput, Field, Fields, Ident, LitStr, Variant};
+use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
+use syn::{
+    parenthesized, parse2, Data, DeriveInput, Field, Fields, Ident, LitStr, Result, Token, Variant,
+};
+use syn::{punctuated, Attribute};
 
 struct FieldOrdered(Field, usize);
 
@@ -331,18 +335,43 @@ fn get_destruct_field_meta(
     tokens
 }
 
-#[proc_macro_derive(Destruct)]
+#[derive(Debug)]
+struct DestructArgs {
+    brace_token: syn::token::Paren,
+    fields: Punctuated<Ident, Token![,]>,
+}
+
+impl Parse for DestructArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let content;
+        Ok(DestructArgs {
+            brace_token: parenthesized!(content in input),
+            fields: content.parse_terminated(Ident::parse)?,
+        })
+    }
+}
+
+#[proc_macro_derive(Destruct, attributes(destruct))]
 pub fn derive_destruct(input: TokenStream) -> TokenStream {
     let input = proc_macro2::TokenStream::from(input);
     let input: DeriveInput = parse2(input).unwrap();
     let name = input.ident;
+    let attrs: Vec<&Attribute> = input
+        .attrs
+        .iter()
+        .filter(|a| a.path.get_ident().unwrap() == "destruct")
+        .collect();
 
-    let result = match input.data {
+    if attrs.len() > 1 {
+        panic!("only one destruct attribute is allowed");
+    }
+
+    let mut result = match input.data {
         Data::Struct(s) => {
             let (field_type, fields) = convert_fields(&s.fields);
             let s = format!("{}", name);
             let lit_name = LitStr::new(s.as_str(), name.span());
-            derive_struct(name, lit_name, field_type, fields)
+            derive_struct(name.clone(), lit_name, field_type, fields)
         }
         Data::Enum(e) => {
             let mut tt = TokenStream2::new();
@@ -447,6 +476,17 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
         }
         _ => panic!("derive Destruct supports only structs"),
     };
+    if !attrs.is_empty() {
+        let attr = attrs[0];
+        let args: DestructArgs = syn::parse2(attr.tokens.clone()).unwrap();
+
+        for ident in args.fields.iter() {
+            result.extend(quote! {
+                #ident!(#name);
+            });
+        }
+    }
+
     proc_macro::TokenStream::from(result)
 }
 

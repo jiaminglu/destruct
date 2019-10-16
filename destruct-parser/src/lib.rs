@@ -138,6 +138,21 @@ impl<T: Parsable> Parsable for Vec<T> {
     }
 }
 
+/// Use macros to workaround overlapping impls
+#[allow(unused_macros)]
+macro_rules! parsable {
+    ($t:ident) => {
+        impl Parsable for $t
+        where
+            <$t as Destruct>::DestructType: Parsable,
+        {
+            fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
+                <$t as Destruct>::DestructType::parse(read).map(<$t as Destruct>::construct)
+            }
+        }
+    };
+}
+
 pub fn parse_struct<T: Destruct, R: io::Read + Clone>(r: &mut R) -> Result<T, Error>
 where
     T::DestructType: Parsable,
@@ -154,6 +169,7 @@ mod tests {
     use super::*;
 
     #[derive(Debug, Destruct, PartialEq, Eq)]
+    #[destruct(parsable)]
     struct Test {
         a: Validated<u8, IsAsciiLowerCase>,
         b: Validated<u8, IsAsciiDigit>,
@@ -172,7 +188,7 @@ mod tests {
     #[test]
     fn test_struct() {
         let ab = b"a2";
-        let result: Test = parse_struct(&mut ab.as_ref()).unwrap();
+        let result: Test = Test::parse(&mut ab.as_ref()).unwrap();
         assert_eq!(
             result,
             Test {
