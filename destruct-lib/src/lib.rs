@@ -11,8 +11,32 @@ extern crate derive_new;
 use std::marker::PhantomData;
 
 pub trait Destruct: Sized {
+    /// The destructed object type
+    ///
+    /// If your struct is:
+    /// ```rust,no-run
+    /// #[derive(Destruct)]
+    /// struct YourStruct {
+    ///     field: YourField,
+    ///     field2: YourField2,
+    /// }
+    /// ```
+    /// Then the DestructType is:
+    ///
+    /// DestructBegin<Fields, m>
+    ///     where Fields = DestructField<YourField, NextField, m1>
+    ///           NextField = DestructField<YourField2, End, m2>
+    ///           End = DestructEnd<m>
+    ///     where m is some generated type implementing `trait DestructMetadata`
+    ///           m1 is the metadata for `field`, implementing `trait DestructFieldMetadata`
+    ///           m2 is the metadata for `field2`, implementing `trait DestructFieldMetadata`
+    /// }
     type DestructType: From<Self> + Into<Self>;
+
+    /// Destruct self to destruct type
     fn destruct(self) -> Self::DestructType;
+
+    /// Construct self from destruct type
     fn construct(d: Self::DestructType) -> Self;
 }
 

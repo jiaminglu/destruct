@@ -142,26 +142,12 @@ impl<T: Parsable> Parsable for Vec<T> {
 #[allow(unused_macros)]
 macro_rules! parsable {
     ($t:ident) => {
-        impl Parsable for $t
-        where
-            <$t as Destruct>::DestructType: Parsable,
-        {
+        impl Parsable for $t {
             fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
                 <$t as Destruct>::DestructType::parse(read).map(<$t as Destruct>::construct)
             }
         }
     };
-}
-
-pub fn parse_struct<T: Destruct, R: io::Read + Clone>(r: &mut R) -> Result<T, Error>
-where
-    T::DestructType: Parsable,
-{
-    T::DestructType::parse(r).map(T::construct)
-}
-
-pub fn parse<T: Parsable, R: io::Read + Clone>(r: &mut R) -> Result<T, Error> {
-    T::parse(r)
 }
 
 #[cfg(test)]
@@ -199,6 +185,7 @@ mod tests {
     }
 
     #[derive(Debug, Destruct, PartialEq, Eq)]
+    #[destruct(parsable)]
     enum TestEnum {
         CaseA(Validated<u8, IsAsciiLowerCase>, Validated<u8, IsAsciiDigit>),
         CaseB {
@@ -213,14 +200,14 @@ mod tests {
         let s2 = b"aa";
         let s3 = b"1a";
 
-        let result: TestEnum = parse_struct(&mut s1.as_ref()).unwrap();
+        let result = TestEnum::parse(&mut s1.as_ref()).unwrap();
         assert_eq!(
             result,
             TestEnum::CaseA(Validated::new(b'a'), Validated::new(b'1'))
         );
-        let result: Result<TestEnum, Error> = parse_struct(&mut s2.as_ref());
+        let result = TestEnum::parse(&mut s2.as_ref());
         assert!(result.is_err());
-        let result: TestEnum = parse_struct(&mut s3.as_ref()).unwrap();
+        let result = TestEnum::parse(&mut s3.as_ref()).unwrap();
         assert_eq!(
             result,
             TestEnum::CaseB {
@@ -231,6 +218,7 @@ mod tests {
     }
 
     #[derive(Debug, Destruct, PartialEq, Eq)]
+    #[destruct(parsable)]
     enum TestEnum2 {
         CaseA(Validated<u8, IsAsciiLowerCase>, Validated<u8, IsAsciiDigit>),
         CaseB(
@@ -245,21 +233,22 @@ mod tests {
         let s2 = b"aa";
         let s3 = b"1a";
 
-        let result: TestEnum2 = parse_struct(&mut s1.as_ref()).unwrap();
+        let result = TestEnum2::parse(&mut s1.as_ref()).unwrap();
         assert_eq!(
             result,
             TestEnum2::CaseA(Validated::new(b'a'), Validated::new(b'1'))
         );
-        let result: TestEnum2 = parse_struct(&mut s2.as_ref()).unwrap();
+        let result = TestEnum2::parse(&mut s2.as_ref()).unwrap();
         assert_eq!(
             result,
             TestEnum2::CaseB(Validated::new(b'a'), Validated::new(b'a'))
         );
-        let result: Result<TestEnum2, Error> = parse_struct(&mut s3.as_ref());
+        let result: Result<TestEnum2, Error> = TestEnum2::parse(&mut s3.as_ref());
         assert!(result.is_err());
     }
 
     #[derive(new, Debug, Destruct, PartialEq, Eq)]
+    #[destruct(parsable)]
     struct Identifier {
         head: Validated<u8, IsAsciiLowerCase>,
         tail: Vec<Validated<u8, IsAsciiDigit>>,
@@ -271,12 +260,12 @@ mod tests {
         let s2 = b"a12";
         let s3 = b"1a";
 
-        let result: Identifier = parse_struct(&mut s1.as_ref()).unwrap();
+        let result = Identifier::parse(&mut s1.as_ref()).unwrap();
         assert_eq!(
             result,
             Identifier::new(Validated::new(b'a'), vec!(Validated::new(b'1')))
         );
-        let result: Identifier = parse_struct(&mut s2.as_ref()).unwrap();
+        let result = Identifier::parse(&mut s2.as_ref()).unwrap();
         assert_eq!(
             result,
             Identifier::new(
@@ -284,7 +273,7 @@ mod tests {
                 vec!(Validated::new(b'1'), Validated::new(b'2'))
             )
         );
-        let result: Result<Identifier, Error> = parse_struct(&mut s3.as_ref());
+        let result = Identifier::parse(&mut s3.as_ref());
         assert!(result.is_err())
     }
 }
