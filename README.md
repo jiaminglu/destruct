@@ -111,3 +111,7 @@ macro_rules! parsable {
     };
 }
 ```
+
+## Limitations
+
+Generics are not supported.

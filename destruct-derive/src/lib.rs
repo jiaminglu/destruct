@@ -474,7 +474,7 @@ pub fn derive_destruct(input: TokenStream) -> TokenStream {
                 }
             }
         }
-        _ => panic!("derive Destruct supports only structs"),
+        _ => panic!("derive Destruct supports only structs and enums"),
     };
     if !attrs.is_empty() {
         let attr = attrs[0];
