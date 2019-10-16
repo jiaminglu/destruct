@@ -98,3 +98,16 @@ upstream crates may add new impl of trait `destruct::Destruct` for type `destruc
 ```
 
 So I added `#[destruct(parsable)]` to generate impls for every struct. It is equivalent to `parsable!(YourStruct)`.
+
+```rust
+#[macro_export]
+macro_rules! parsable {
+    ($t:ident) => {
+        impl Parsable for $t {
+            fn parse<R: io::Read + Clone>(read: &mut R) -> Result<Self, Error> {
+                <$t as Destruct>::DestructType::parse(read).map(<$t as Destruct>::construct)
+            }
+        }
+    };
+}
+```

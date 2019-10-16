@@ -139,7 +139,7 @@ impl<T: Parsable> Parsable for Vec<T> {
 }
 
 /// Use macros to workaround overlapping impls
-#[allow(unused_macros)]
+#[macro_export]
 macro_rules! parsable {
     ($t:ident) => {
         impl Parsable for $t {
