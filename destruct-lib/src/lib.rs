@@ -212,11 +212,11 @@ mod tests {
         let d = a.destruct();
         let name = d.struct_name();
         assert_eq!(name, "A");
-        let name = d.fields.head_name();
+        let name = d.fields.field_name();
         assert_eq!(name, "first");
-        let name = d.fields.tail.head_name();
+        let name = d.fields.tail.field_name();
         assert_eq!(name, "second");
-        let name = d.fields.tail.tail.head_name();
+        let name = d.fields.tail.tail.field_name();
         assert_eq!(name, "third");
     }
 
@@ -243,6 +243,21 @@ mod tests {
             .unwrap()
             .into();
         assert_eq!(b, B(b'a', b'b'))
+    }
+
+    #[derive(Debug, Destruct, PartialEq, Eq)]
+    enum TestEnum {
+        A,
+        B,
+        C,
+    }
+
+    #[test]
+    fn test_enum() {
+        let e = TestEnum::construct(TestEnum::A.destruct());
+        assert_eq!(e, TestEnum::A);
+        let e = TestEnum::construct(TestEnum::B.destruct());
+        assert_eq!(e, TestEnum::B);
     }
 
 }
