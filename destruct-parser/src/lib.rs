@@ -214,6 +214,35 @@ mod tests {
         );
     }
 
+    #[derive(Debug, Destruct, PartialEq, Eq)]
+    enum TestEnum2 {
+        CaseA(Validated<u8, IsAsciiLowerCase>, Validated<u8, IsAsciiDigit>),
+        CaseB(
+            Validated<u8, IsAsciiLowerCase>,
+            Validated<u8, IsAsciiLowerCase>,
+        ),
+    }
+
+    #[test]
+    fn test_parse_enum_same_initial() {
+        let s1 = b"a1";
+        let s2 = b"aa";
+        let s3 = b"1a";
+
+        let result: TestEnum2 = parse_struct(&mut s1.as_ref()).unwrap();
+        assert_eq!(
+            result,
+            TestEnum2::CaseA(Validated::new(b'a'), Validated::new(b'1'))
+        );
+        let result: TestEnum2 = parse_struct(&mut s2.as_ref()).unwrap();
+        assert_eq!(
+            result,
+            TestEnum2::CaseB(Validated::new(b'a'), Validated::new(b'a'))
+        );
+        let result: Result<TestEnum2, Error> = parse_struct(&mut s3.as_ref());
+        assert!(result.is_err());
+    }
+
     #[derive(new, Debug, Destruct, PartialEq, Eq)]
     struct Identifier {
         head: Validated<u8, IsAsciiLowerCase>,
