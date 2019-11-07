@@ -335,7 +335,6 @@ fn get_destruct_field_meta(
     tokens
 }
 
-#[derive(Debug)]
 struct DestructArgs {
     brace_token: syn::token::Paren,
     fields: Punctuated<Ident, Token![,]>,
