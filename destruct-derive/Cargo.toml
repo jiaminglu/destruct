@@ -1,6 +1,6 @@
 [package]
 name = "destruct-derive"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Jiaming Lu <jiaminglu@live.com>"]
 edition = "2018"
 license = "MIT"

@@ -1,6 +1,6 @@
 [package]
 name = "destruct"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Jiaming Lu <jiaminglu@live.com>"]
 edition = "2018"
 license = "MIT"
@@ -19,6 +19,6 @@ members = [
   "destruct-parser",
 ]
 
-[patch.crates-io]
-destruct-lib = { path = "destruct-lib" }
-destruct-derive = { path = "destruct-derive" }
+#[patch.crates-io]
+#destruct-lib = { path = "destruct-lib" }
+#destruct-derive = { path = "destruct-derive" }
